@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Conectando ao Google…</title>
+<link rel="icon" href="https://poteseguro.com.br/favicon.ico?v=3">
+<style>
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+         font-family:'Inter',system-ui,sans-serif; background:#f9f9f9; color:#2d2d2d; }
+  .c { text-align:center; padding:2rem; }
+  .s { width:34px; height:34px; margin:0 auto 1rem; border:3px solid #ffe2c0;
+       border-top-color:#f68b1f; border-radius:50%; animation:g .8s linear infinite; }
+  @keyframes g { to { transform:rotate(360deg); } }
+  a { color:#f68b1f; }
+</style>
+</head>
+<body>
+<div class="c">
+  <div class="s"></div>
+  <p id="msg">Conectando ao Google…</p>
+</div>
+
+<!--
+  ============================================================================
+  PONTE DO CALLBACK DO GOOGLE — POR QUE ESTA PÁGINA EXISTE
+  ============================================================================
+
+  O Mod_Security da hospedagem recusa, com 406, QUALQUER requisição a uma rota
+  PHP cuja query traga `https%3A%2F%2F` — o `https://` codificado. E é
+  exatamente isso que o Google devolve no callback:
+
+      ?code=4/0A…&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcalendar&…
+
+  Medido: /login, /webhook/telegram e o próprio callback devolvem 406 com esse
+  parâmetro; um arquivo ESTÁTICO com a mesma query devolve 200. A regra só vale
+  para requisição dinâmica.
+
+  Daí esta página. Ela é estática — passa —, e reencaminha para a rota do
+  sistema levando só o que o sistema usa: `code`, `state` e `error`. O `scope`
+  fica para trás, e a rota PHP recebe uma query que o Mod_Security aceita.
+
+  ⚠️ NÃO É GAMBIARRA ESCONDIDA: a correção certa é a hospedagem liberar a regra
+  para este domínio (chamado aberto na HostGator). Enquanto isso não acontece,
+  esta ponte é o que faz o OAuth funcionar — e ela continua correta depois,
+  apenas deixa de ser necessária.
+
+  ⚠️ A segurança não muda: o `state` continua assinado com HMAC e conferido no
+  servidor, e o `code` é de uso único, trocado imediatamente por token pelo
+  back-end. Nada aqui decide nada — esta página só repassa.
+-->
+<script>
+(function () {
+    var p = new URLSearchParams(window.location.search);
+    var out = new URLSearchParams();
+
+    // Só o que o servidor lê. Tudo o mais — inclusive o `scope` que dispara a
+    // regra — é descartado de propósito.
+    ['code', 'state', 'error', 'error_description'].forEach(function (k) {
+        if (p.has(k)) { out.set(k, p.get(k)); }
+    });
+
+    if (!p.has('code') && !p.has('error')) {
+        document.getElementById('msg').innerHTML =
+            'Não recebi a resposta do Google. <a href="https://poteseguro.com.br/dashboard">Voltar ao sistema</a>.';
+        return;
+    }
+
+    // `replace` para o callback não ficar no histórico: voltar nesta página
+    // tentaria reusar um `code` que já foi consumido.
+    window.location.replace('https://poteseguro.com.br/broker/google-oauth/callback?' + out.toString());
+}());
+</script>
+</body>
+</html>
